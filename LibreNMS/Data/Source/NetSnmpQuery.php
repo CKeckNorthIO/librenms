@@ -80,7 +80,7 @@ class NetSnmpQuery implements SnmpQueryInterface
      */
     private array $mibDirs = [];
     private string $context = '';
-    private array|string $options = [self::DEFAULT_FLAGS];
+    private array|string $options = [self::DEFAULT_FLAGS, '-Pu'];
     private Device $device;
     private bool $abort = false;
     private bool $cache = false;
@@ -306,19 +306,20 @@ class NetSnmpQuery implements SnmpQueryInterface
      */
     public function translate(string $oid): string
     {
+        $oid = new Oid($oid);
         $this->options = array_diff($this->options, [self::DEFAULT_FLAGS]); // remove default options
-
-        $this->options[] = '-Pu'; // don't error on _
 
         // user did not specify numeric, output full text
         if (! in_array('-On', $this->options)) {
-            $this->options[] = '-OS';
-        } elseif (Oid::isNumeric($oid)) {
+            if (! in_array('-Os', $this->options)) {
+                $this->options[] = '-OS'; // show full oid, unless hideMib is set
+            }
+        } elseif ($oid->isNumeric()) {
             return Str::start($oid, '.'); // numeric to numeric optimization
         }
 
         // if mib is not directly specified and it doesn't have a numeric root
-        if (! str_contains($oid, '::') && ! Oid::hasNumericRoot($oid)) {
+        if (! $oid->hasMib() && ! $oid->hasNumericRoot()) {
             $this->options[] = '-IR'; // search for mib
         }
 
@@ -415,11 +416,18 @@ class NetSnmpQuery implements SnmpQueryInterface
             $key = $this->getCacheKey($command, $oids);
 
             if (Debug::isEnabled()) {
+                $cache_performance = Cache::driver($driver)->get('SnmpQuery_cache_performance', []);
+                $cache_performance[$key] ??= 0;
+
                 if (Cache::driver($driver)->has($key)) {
                     Log::debug("Cache hit for $command " . implode(',', $oids));
+                    $cache_performance[$key]++;
                 } else {
                     Log::debug("Cache miss for $command " . implode(',', $oids) . ', grabbing fresh data.');
                 }
+
+                // update cache performance
+                Cache::driver($driver)->put('SnmpQuery_cache_performance', $cache_performance);
             }
         }
 

@@ -38,8 +38,11 @@ class Port extends DeviceRelatedModel
             $port->macAccounting()->delete();
             $port->macs()->delete();
             $port->nac()->delete();
+            $port->nd()->delete();
             $port->ospfNeighbors()->delete();
             $port->ospfPorts()->delete();
+            $port->ospfv3Neighbors()->delete();
+            $port->ospfv3Ports()->delete();
             $port->pseudowires()->delete();
             $port->statistics()->delete();
             $port->stp()->delete();
@@ -50,7 +53,7 @@ class Port extends DeviceRelatedModel
             // dont have relationships yet
             DB::table('juniAtmVp')->where('port_id', $port->port_id)->delete();
             DB::table('ports_perms')->where('port_id', $port->port_id)->delete();
-            DB::table('ports_stack')->where('port_id_low', $port->port_id)->orWhere('port_id_high', $port->port_id)->delete();
+            DB::table('ports_stack')->where('low_port_id', $port->port_id)->orWhere('high_port_id', $port->port_id)->delete();
 
             \Rrd::purge($port->device?->hostname, \Rrd::portName($port->port_id)); // purge all port rrd files
         });
@@ -105,6 +108,20 @@ class Port extends DeviceRelatedModel
     }
 
     /**
+     * Get a label containing both the ifName and ifAlias if they differ.
+     */
+    public function getFullLabel(): string
+    {
+        $label = $this->getLabel();
+
+        if ($label == $this->ifAlias || empty($this->ifAlias)) {
+            return $label;
+        }
+
+        return "$label - $this->ifAlias";
+    }
+
+    /**
      * Get the description of this port
      */
     public function getDescription(): string
@@ -151,7 +168,7 @@ class Port extends DeviceRelatedModel
     public function scopeIsDeleted($query)
     {
         return $query->where([
-            ['deleted', 1],
+            [$this->qualifyColumn('deleted'), 1],
         ]);
     }
 
@@ -162,7 +179,7 @@ class Port extends DeviceRelatedModel
     public function scopeIsNotDeleted($query)
     {
         return $query->where([
-            ['deleted', 0],
+            [$this->qualifyColumn('deleted'), 0],
         ]);
     }
 
@@ -173,10 +190,10 @@ class Port extends DeviceRelatedModel
     public function scopeIsUp($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['ignore', '=', 0],
-            ['disabled', '=', 0],
-            ['ifOperStatus', '=', 'up'],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('ignore'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 0],
+            [$this->qualifyColumn('ifOperStatus'), '=', 'up'],
         ]);
     }
 
@@ -187,11 +204,11 @@ class Port extends DeviceRelatedModel
     public function scopeIsDown($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['ignore', '=', 0],
-            ['disabled', '=', 0],
-            ['ifOperStatus', '!=', 'up'],
-            ['ifAdminStatus', '=', 'up'],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('ignore'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 0],
+            [$this->qualifyColumn('ifOperStatus'), '!=', 'up'],
+            [$this->qualifyColumn('ifAdminStatus'), '=', 'up'],
         ]);
     }
 
@@ -202,10 +219,10 @@ class Port extends DeviceRelatedModel
     public function scopeIsShutdown($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['ignore', '=', 0],
-            ['disabled', '=', 0],
-            ['ifAdminStatus', '=', 'down'],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('ignore'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 0],
+            [$this->qualifyColumn('ifAdminStatus'), '=', 'down'],
         ]);
     }
 
@@ -216,8 +233,8 @@ class Port extends DeviceRelatedModel
     public function scopeIsIgnored($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['ignore', '=', 1],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('ignore'), '=', 1],
         ]);
     }
 
@@ -228,8 +245,8 @@ class Port extends DeviceRelatedModel
     public function scopeIsDisabled($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['disabled', '=', 1],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 1],
         ]);
     }
 
@@ -240,13 +257,13 @@ class Port extends DeviceRelatedModel
     public function scopeHasErrors($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['ignore', '=', 0],
-            ['disabled', '=', 0],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('ignore'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 0],
         ])->where(function ($query) {
             /** @var Builder $query */
-            $query->where('ifInErrors_delta', '>', 0)
-                ->orWhere('ifOutErrors_delta', '>', 0);
+            $query->where($this->qualifyColumn('ifInErrors_delta'), '>', 0)
+                ->orWhere($this->qualifyColumn('ifOutErrors_delta'), '>', 0);
         });
     }
 
@@ -257,8 +274,8 @@ class Port extends DeviceRelatedModel
     public function scopeIsValid($query)
     {
         return $query->where([
-            ['deleted', '=', 0],
-            ['disabled', '=', 0],
+            [$this->qualifyColumn('deleted'), '=', 0],
+            [$this->qualifyColumn('disabled'), '=', 0],
         ]);
     }
 
@@ -338,6 +355,16 @@ class Port extends DeviceRelatedModel
         return $this->links->merge($this->remoteLinks);
     }
 
+    public function xdpLinkedPorts(): BelongsToMany
+    {
+        return $this->belongsToMany(Port::class, 'links', 'local_port_id', 'remote_port_id');
+    }
+
+    public function macLinkedPorts(): BelongsToMany
+    {
+        return $this->belongsToMany(Port::class, 'view_port_mac_links', 'port_id', 'remote_port_id');
+    }
+
     public function macAccounting(): HasMany
     {
         return $this->hasMany(MacAccounting::class, 'port_id');
@@ -353,6 +380,11 @@ class Port extends DeviceRelatedModel
         return $this->hasMany(PortsNac::class, 'port_id');
     }
 
+    public function nd(): HasMany
+    {
+        return $this->hasMany(Ipv6Nd::class, 'port_id');
+    }
+
     public function ospfNeighbors(): HasMany
     {
         return $this->hasMany(OspfNbr::class, 'port_id');
@@ -361,6 +393,16 @@ class Port extends DeviceRelatedModel
     public function ospfPorts(): HasMany
     {
         return $this->hasMany(OspfPort::class, 'port_id');
+    }
+
+    public function ospfv3Neighbors(): HasMany
+    {
+        return $this->hasMany(Ospfv3Nbr::class, 'port_id');
+    }
+
+    public function ospfv3Ports(): HasMany
+    {
+        return $this->hasMany(Ospfv3Port::class, 'port_id');
     }
 
     public function pagpParent(): BelongsTo
@@ -373,6 +415,21 @@ class Port extends DeviceRelatedModel
         return $this->hasMany(Pseudowire::class, 'port_id');
     }
 
+    public function qos(): HasMany
+    {
+        return $this->hasMany(Qos::class, 'port_id');
+    }
+
+    public function stackChildren(): HasManyThrough
+    {
+        return $this->hasManyThrough(Port::class, PortStack::class, 'low_port_id', 'port_id', 'port_id', 'high_port_id');
+    }
+
+    public function stackParent(): HasManyThrough
+    {
+        return $this->hasManyThrough(Port::class, PortStack::class, 'high_port_id', 'port_id', 'port_id', 'low_port_id');
+    }
+
     public function statistics(): HasMany
     {
         return $this->hasMany(PortStatistic::class, 'port_id');
@@ -381,6 +438,11 @@ class Port extends DeviceRelatedModel
     public function stp(): HasMany
     {
         return $this->hasMany(PortStp::class, 'port_id');
+    }
+
+    public function transceivers(): HasMany
+    {
+        return $this->hasMany(Transceiver::class, 'port_id');
     }
 
     public function users(): BelongsToMany
