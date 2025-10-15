@@ -780,7 +780,7 @@ return [
                 'description' => 'UCD DiskIO',
             ],
             'vlans' => [
-                'description' => 'VLans',
+                'description' => 'VLANs',
             ],
             'vminfo' => [
                 'description' => 'Hypervisor VM Info',
@@ -1167,9 +1167,21 @@ return [
                 'description' => 'Username',
                 'help' => 'Username to connect to InfluxDB, if required',
             ],
+            'batch_size' => [
+                'description' => 'Batch Size',
+                'help' => 'Number of metrics to send in a single batch, 0 means no batching',
+            ],
+            'measurements' => [
+                'description' => 'Measurements',
+                'help' => 'List of measurements to send to InfluxDB, leave empty to send all',
+            ],
             'verifySSL' => [
                 'description' => 'Verify SSL',
                 'help' => 'Verify the SSL certificate is valid and trusted',
+            ],
+            'debug' => [
+                'description' => 'Debug',
+                'help' => 'To enable or disable verbose output to CLI',
             ],
         ],
         'influxdbv2' => [
@@ -1656,6 +1668,9 @@ return [
             'bgp-peers' => [
                 'description' => 'BGP Peers',
             ],
+            'vlans' => [
+                'description' => 'VLANs',
+            ],
             'junose-atm-vp' => [
                 'description' => 'JunOS ATM VP',
             ],
@@ -1751,6 +1766,9 @@ return [
             ],
             'printer-supplies' => [
                 'description' => 'Printer Supplies',
+            ],
+            'port-security' => [
+                'description' => 'Port Security',
             ],
         ],
         'polling.selected_ports' => [

@@ -15,7 +15,7 @@ use App\Models\StateTranslation;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use LibreNMS\Enum\Severity;
-use LibreNMS\Util\StringHelpers;
+use LibreNMS\Util\Time;
 
 /**
  * Parse cli discovery or poller modules and set config for this run
@@ -335,19 +335,7 @@ function port_fill_missing_and_trim(&$port, $device)
 
 function convert_delay($delay)
 {
-    if (preg_match('/(\d+)([mhd]?)/', $delay, $matches)) {
-        $multipliers = [
-            'm' => 60,
-            'h' => 3600,
-            'd' => 86400,
-        ];
-
-        $multiplier = $multipliers[$matches[2]] ?? 1;
-
-        return $matches[1] * $multiplier;
-    }
-
-    return $delay === '' ? 0 : 300;
+    return Time::durationToSeconds($delay);
 }
 
 function normalize_snmp_ip_address($data)
@@ -499,37 +487,6 @@ function hytera_h2f($number, $nd)
     }
 
     return number_format($floatfinal, $nd, '.', '');
-}
-
-function q_bridge_bits2indices($hex_data): array
-{
-    /* convert hex string to an array of 1-based indices of the nonzero bits
-     * ie. '9a00' -> '100110100000' -> array(1, 4, 5, 7)
-    */
-    $hex_data = str_replace([' ', "\n"], '', $hex_data);
-
-    // we need an even number of digits for hex2bin
-    if (strlen($hex_data) % 2 === 1) {
-        $hex_data = '0' . $hex_data;
-    }
-
-    if (! StringHelpers::isHex($hex_data)) {
-        return [];
-    }
-
-    $value = hex2bin($hex_data);
-    $length = strlen($value);
-    $indices = [];
-    for ($i = 0; $i < $length; $i++) {
-        $byte = ord($value[$i]);
-        for ($j = 7; $j >= 0; $j--) {
-            if ($byte & (1 << $j)) {
-                $indices[] = 8 * $i + 8 - $j;
-            }
-        }
-    }
-
-    return $indices;
 }
 
 /**
